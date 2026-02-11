@@ -1,6 +1,6 @@
 import { Instance } from "cs_script/point_script";
 import { MAX_JUMP_HEIGHT, MAX_WALK_HEIGHT, MESH_CELL_SIZE_XY, MESH_CELL_SIZE_Z } from "./path_const";
-import { vec } from "../util/vector";
+import { vec } from "../../util/vector";
 
 export class JumpLinkBuilder
 {

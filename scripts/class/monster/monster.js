@@ -2,7 +2,8 @@ import { CSPlayerPawn, Entity, Instance, PointTemplate } from "cs_script/point_s
 import { NPCLocomotion } from "./movement/npc_locomotion";
 import { MonsterAnimator } from "./animator";
 import { NavMesh } from "./navmesh/path_manager";
-import { SkillFactory, SkillTemplate } from "./skill_manager";
+import { SkillTemplate } from "./skill_manager";
+import { SkillFactory } from "./skill_factory";
 
 export const MonsterState = {
     IDLE: 0,//空闲

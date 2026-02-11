@@ -19,7 +19,6 @@ export class PvEGameManager {
             // 通知怪物管理器生成怪物
             this.MonsterManager.spawnWave(waveConfig);
         });
-        
         // 波次完成事件
         this.WaveManager.setOnWaveComplete((waveNumber, waveConfig) => {
             // 给予玩家奖励

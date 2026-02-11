@@ -51,26 +51,26 @@ export class WaveManager {
                         attackdist:80,
                         movementmode:"OnGround",
                         skill_pool:[
-                            {
-                                id:"pounce",//技能名称
-                                chance: 1,//技能获得概率
-                                params:{cooldowntime:5,distance:250,animation:"pounce"}
-                            },
-                            {
-                                id:"speed_boost",//技能名称
-                                chance: 0,//技能获得概率
-                                params:{multiplier:1.3}
-                            },
-                            {
-                                id: "hp_up",
-                                chance: 0,
-                                params: { value: 50 }
-                            },
-                            {
-                                id: "shield",
-                                chance: 0,
-                                params: {cooldowntime:15,runtime:-1,value:50}
-                            }
+                            //{
+                            //    id:"pounce",//技能名称
+                            //    chance: 1,//技能获得概率
+                            //    params:{cooldowntime:5,distance:250,animation:"pounce"}
+                            //},
+                            //{
+                            //    id:"speed_boost",//技能名称
+                            //    chance: 0,//技能获得概率
+                            //    params:{multiplier:1.3}
+                            //},
+                            //{
+                            //    id: "hp_up",
+                            //    chance: 0,
+                            //    params: { value: 50 }
+                            //},
+                            //{
+                            //    id: "shield",
+                            //    chance: 0,
+                            //    params: {cooldowntime:15,runtime:-1,value:50}
+                            //}
                         ],
                         animations:{
                             "idle":[

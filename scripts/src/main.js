@@ -7,7 +7,6 @@ Instance.ServerCommand("mp_roundtime 60");
 Instance.ServerCommand("mp_freezetime 1");
 Instance.ServerCommand("mp_ignore_round_win_conditions 1");
 Instance.ServerCommand("weapon_accuracy_nospread 1");
-
 //let position={x: 0,y: 0,z: 0};
 //let eye={pitch: 0,yaw: 0,roll: 0};
 //let pd=false;
@@ -74,6 +73,7 @@ Instance.ServerCommand("weapon_accuracy_nospread 1");
 //        pd=!pd;
 //    }
 //});
+
 let m_PvEGameManager=new PvEGameManager();
 Instance.OnScriptReload({
     before: () => {
@@ -88,6 +88,7 @@ Instance.OnScriptReload({
 Instance.OnScriptInput("restart",()=>{
     m_PvEGameManager.resetGame();
 })
+
 //Instance.SetThink(() => {
 //    const tr=Instance.TraceSphere({radius:30,start:{x:100,y:100,z:100},end:{x:100,y:100,z:100},ignorePlayers:true});
 //    if(tr&&tr.didHit)Instance.DebugSphere({radius:30,center:tr.end,duration:1});

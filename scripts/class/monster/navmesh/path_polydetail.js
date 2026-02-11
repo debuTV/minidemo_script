@@ -2,7 +2,7 @@ import { Instance } from "cs_script/point_script";
 import { POLY_DETAIL_SAMPLE_DIST, MESH_CELL_SIZE_XY, MESH_CELL_SIZE_Z, origin, pointInTri, POLY_DETAIL_HEIGHT_ERROR, isConvex, distPtSegSq } from "./path_const";
 import { OpenHeightfield } from "./path_openheightfield";
 import { OpenSpan } from "./path_openspan";
-import { vec } from "../util/vector";
+import { vec } from "../../util/vector";
 
 export class PolyMeshDetailBuilder {
     /**

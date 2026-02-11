@@ -1,6 +1,6 @@
 import { Instance } from "cs_script/point_script";
 import { area, distPtSegSq, isConvex, POLY_MAX_VERTS_PER_POLY, pointInTri, POLY_MERGE_LONGEST_EDGE_FIRST, POLY_BIG_TRI } from "./path_const";
-import { vec } from "../util/vector";
+import { vec } from "../../util/vector";
 
 export class PolyMeshBuilder {
 

@@ -14,7 +14,6 @@ export class MonsterManager {
         /** @type {number} */
         this.totalReward = 0; // 总奖励
         this.totaltick=-1;
-
         // 事件回调
         this.onMonsterSpawn = null; // 怪物生成回调
         this.onMonsterDeath = null; // 怪物死亡回调
@@ -75,6 +74,7 @@ export class MonsterManager {
             // 创建怪物实例
             // 这里调用 Monster 类的构造函数
             // 参数包括：ID, 位置, 朝向, 怪物类型, 波次配置
+            
             const monster = new Monster(
                 monsterId,
                 end,

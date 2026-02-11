@@ -1,13 +1,13 @@
 import { Instance } from "cs_script/point_script";
 //==============================世界相关设置=====================================
-export const origin = { x: -2300, y: -1150, z: -230 };
+export const origin = { x: -1400, y: -4510, z: 220 };
 //==============================Recast设置======================================
 //体素化参数
-export const MESH_CELL_SIZE_XY = 6;                               // 体素大小
+export const MESH_CELL_SIZE_XY = 14;                               // 体素大小
 export const MESH_CELL_SIZE_Z = 1;                                // 体素高度
 export const MESH_TRACE_SIZE_Z = 32;                              // 射线方块高度//太高，会把竖直方向上的间隙也忽略
-export const MESH_WORLD_SIZE_XY = 4500;                           // 世界大小
-export const MESH_WORLD_SIZE_Z = 800;                             // 世界高度
+export const MESH_WORLD_SIZE_XY = 3200;                           // 世界大小
+export const MESH_WORLD_SIZE_Z = 600;                             // 世界高度
 export const MESH_OPTIMIZATION_1 = true;                          // 优化1：是否修剪掉info_target{name:navmesh}不能去的体素
 export const MESH_OPTIMIZATION_2 = true;                          // 优化2: 按行走高度忽略边界旁边1个体素，防止出现爬墙,这个选项需要CELL_SIZE足够小，(当出现耳割法错误时推荐开启)
 export const MESH_ERODE_RADIUS = 3;                               // 按跳跃高度，腐蚀半径，如果一个区域应该不能被走到，但优化1未去除，可以增加此值,或者修改地图设计
@@ -37,7 +37,7 @@ export const CONTOUR_DEBUG = false;                               // 显示区�
 export const POLY_DEBUG = false;                                   // 显示最后的寻路多边形
 export const POLY_DETAIL_DEBUG = false;                           // 显示最后的细节多边形
 export const JUMP_LINK_DEBUG = false;                              // 显示跳点
-export const LOAD_DEBUG = true;                                  // 载入静态数据时可开启，查看是否导入成功
+export const LOAD_DEBUG = false;                                  // 载入静态数据时可开启，查看是否导入成功
 //==============================Detour设置======================================
 //A*寻路参数
 export const ASTAR_OPTIMIZATION_1 = false;                        //是否预计算距离，推荐多边形在2000及以下可以打开
