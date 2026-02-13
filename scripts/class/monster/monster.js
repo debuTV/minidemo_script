@@ -4,6 +4,7 @@ import { MonsterAnimator } from "./animator";
 import { NavMesh } from "./navmesh/path_manager";
 import { SkillTemplate } from "./skill_manager";
 import { SkillFactory } from "./skill_factory";
+import { linearGame, playerDamage, targetTeam } from "../game_const";
 
 export const MonsterState = {
     IDLE: 0,//空闲
@@ -40,13 +41,18 @@ export class Monster {
         this.attackdist = typeConfig.attackdist;
         /** @type {number} */
         this.baseReward = typeConfig.reward;
+        this.atc=typeConfig.attackCooldown;
 
         this.occupation = "";
 
         //死亡回调
+        this.killer=null;
         this.onDeath = null;
         this.initEntities(position,typeConfig.template_name);
         
+        this.onAttack = null;
+        this.onSkill=null;
+
         this.state = MonsterState.IDLE;
         this.target = null;
         this.lastTargetUpdate = 0;
@@ -72,6 +78,11 @@ export class Monster {
         this.animator.setonStateFinish((state)=>{
             if(state==MonsterState.ATTACK)this.onOccupationEnd("attack");
             else if(state==MonsterState.SKILL)this.onOccupationEnd("skill");
+            else if(state==MonsterState.DEAD){
+                //清理模型
+                this.model.Remove();
+                this.breakable.Remove();
+            }
         });
         //每次只执行一个skill，后一个skill覆盖前一个skill
         this.skillRequestid="";
@@ -143,6 +154,7 @@ export class Monster {
      * @param {CSPlayerPawn | null} attacker
      */
     takeDamage(amount, attacker) {
+        if (this.state==MonsterState.DEAD)return true; // 死亡
         const previousHealth = this.health;
         this.health -= amount;
         this.emitEvent({ type: "OntakeDamage",value:amount,health:this.health});
@@ -158,16 +170,18 @@ export class Monster {
      */
     die(killer) {
         // 播放死亡效果
+        Instance.EntFireAtTarget({target:this.breakable,input:"fireuser1",activator:killer??this.target??undefined});
         this.state=MonsterState.DEAD;
         this.emitEvent({ type: "OnDie"});
         // 触发死亡回调
         if (this.onDeath) {
             this.onDeath(this, killer);
         }
-        
-        // 清理模型
-        this.model.Remove();
-        this.breakable.Remove();
+        this.killer=killer;
+        // 清理模型,不应该立即清理，这里强制播放死亡动画，等动画播放完后清理
+        ///this.model.Remove();
+        ///this.breakable.Remove();
+        this.animator.enter(MonsterState.DEAD);
         Instance.Msg(`怪物 #${this.id} 死亡`);
     }
     // 设置死亡回调
@@ -177,7 +191,20 @@ export class Monster {
     setOnDeath(callback) {
         this.onDeath = callback;
     }
-
+    // 设置攻击回调
+    /**
+     * @param {(damage: number, target: CSPlayerPawn) => void} callback
+     */
+    setOnAttack(callback) {
+        this.onAttack = callback;
+    }
+    // 设置技能回调，就是给玩家加buff
+    /**
+     * @param {(id: string, target: CSPlayerPawn) => void} callback
+     */
+    setOnSkill(callback) {
+        this.onSkill = callback;
+    }
     /**
      * @param {Entity[]} allmpos
      */
@@ -243,7 +270,7 @@ export class Monster {
         let best = null;
         let bestDist = Infinity;
         for (const p of players) {
-            if (!(p instanceof CSPlayerPawn) || !p.IsAlive()) continue;
+            if (!(p instanceof CSPlayerPawn) || !p.IsAlive()||(p.GetTeamNumber()&targetTeam)!=1) continue;
             const d = this.distanceTo(p);
             if (d < bestDist) {
                 best = p;
@@ -350,7 +377,7 @@ export class Monster {
     enterAttack() {
         if (!this.target) return;
         this.occupation= "attack";
-        this.attackCooldown = 3.0; // 攻击间隔
+        this.attackCooldown = this.atc; // 攻击间隔
 
         const a = this.breakable.GetAbsOrigin();
         const b = this.target.GetAbsOrigin();
@@ -364,6 +391,20 @@ export class Monster {
         //这里造成伤害
         const l = 300 / Math.hypot(b.x - a.x, b.y - a.y);
         this.emitEvent({ type: "OnattackTrue"});
+
+        if(linearGame)
+        {
+            //通过回调调用player造成伤害
+            if (this.onAttack) {
+                this.onAttack(this.damage, this.target);
+            }
+        }
+        else if(playerDamage)
+        {
+            //手动造成伤害
+            this.target.TakeDamage({damage:this.damage});
+            return;
+        }
         //this.target.Teleport({
         //    velocity: { x: (b.x - a.x) * l, y: (b.y - a.y) * l, z: 150 }
         //});

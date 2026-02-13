@@ -220,7 +220,7 @@ export class NavMesh {
         //Instance.DebugSphere({center:polyPath.end,radius:1,duration:1});
         //Instance.Msg("heightfixer:"+ans.length);
         if (!ans || ans.length === 0) return [];
-        this.debugDrawPath(ans,1/2);
+        this.debugDrawPath(ans,1/32);
 
         //多边形总数：1025跳点数：162
         //100次A*           68ms

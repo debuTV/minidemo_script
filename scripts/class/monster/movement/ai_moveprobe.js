@@ -1,5 +1,6 @@
 import { Entity, Instance } from "cs_script/point_script";
 import { vec } from "../../util/vector";
+import { groundCheckDist, surfaceEpsilon, Tracemaxs, Tracemins } from "../../game_const";
 
 export class AIMoveProbe {
     /**
@@ -9,10 +10,10 @@ export class AIMoveProbe {
         this.entity = entity;
 
         // 碰撞参数
-        this.mins = vec.get(-4,-4,1);//抬高一个高度
-        this.maxs = vec.get(4,4,4);
-        this.groundCheckDist = 8;
-        this.surfaceEpsilon = 4;
+        this.mins = Tracemins;//抬高一个高度
+        this.maxs = Tracemaxs;
+        this.groundCheckDist = groundCheckDist;
+        this.surfaceEpsilon = surfaceEpsilon;
     }
     // 扫描前方是否被阻挡
     /**

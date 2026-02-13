@@ -155,9 +155,9 @@ Instance.OnScriptInput("restart",()=>{
 //        })
 //        for(let i=0;i<1;i++)pathfinder.findPath(start,end);
 //    }
-//    Instance.SetNextThink(Instance.GetGameTime()+1/1);
+//    Instance.SetNextThink(Instance.GetGameTime()+1/32);
 //});
-//Instance.SetNextThink(Instance.GetGameTime()+1/1);
+//Instance.SetNextThink(Instance.GetGameTime()+1/32);
 //let start={x:-90,y:-2923,z:607};
 //let end={x:-90,y:-2923,z:607};
 //let pd=false;

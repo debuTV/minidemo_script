@@ -1,4 +1,5 @@
 import { Instance} from "cs_script/point_script";
+import { wavesConfig } from "./game_const";
 export class WaveManager {
     /**
      * @returns
@@ -15,6 +16,10 @@ export class WaveManager {
         this.onWaveComplete = null; // 波次完成回调
         this.onWaveStart = null; // 波次开始回调
         this.initDefaultWaves();
+
+        this.wavepretick=-1;         //波次激活时间
+        this.wavetime=0;             //波次激活到开始的时间
+        this.waveenable=false;       //波次是否激活
     }
     // 设置回调
     /**
@@ -33,81 +38,7 @@ export class WaveManager {
     // 初始化波次配置
     initDefaultWaves() {
         // 每波配置: { name, totalMonsters, reward, spawnInterval, preparationTime }
-        this.waves = [
-            { 
-                name: "训练波", 
-                totalMonsters: 1000, 
-                reward: 500, 
-                spawnInterval: 3.0, 
-                preparationTime: 15,
-                monsterTypes:[
-                    {
-                        template_name:"headcrab_classic_template",
-                        name: "Zombie",
-                        baseHealth: 100,
-                        baseDamage: 10,
-                        speed: 150,
-                        reward: 100,
-                        attackdist:80,
-                        movementmode:"OnGround",
-                        skill_pool:[
-                            //{
-                            //    id:"pounce",//技能名称
-                            //    chance: 1,//技能获得概率
-                            //    params:{cooldowntime:5,distance:250,animation:"pounce"}
-                            //},
-                            //{
-                            //    id:"speed_boost",//技能名称
-                            //    chance: 0,//技能获得概率
-                            //    params:{multiplier:1.3}
-                            //},
-                            //{
-                            //    id: "hp_up",
-                            //    chance: 0,
-                            //    params: { value: 50 }
-                            //},
-                            //{
-                            //    id: "shield",
-                            //    chance: 0,
-                            //    params: {cooldowntime:15,runtime:-1,value:50}
-                            //}
-                        ],
-                        animations:{
-                            "idle":[
-                                "headcrab_classic_idle",
-                                "headcrab_classic_idle_b",
-                                "headcrab_classic_idle_c"
-                            ],
-                            "walk":[
-                                "headcrab_classic_walk",
-                                "headcrab_classic_run"
-                            ],
-                            "attack":[
-                                "headcrab_classic_attack_antic_02",
-                                "headcrab_classic_attack_antic_03",
-                                "headcrab_classic_attack_antic_04"
-                            ],
-                            "skill":[
-                                "headcrab_classic_attack_antic_02",
-                                "headcrab_classic_attack_antic_03",
-                                "headcrab_classic_attack_antic_04"
-                            ],
-                            "pounce":[
-                                "headcrab_classic_jumpattack"
-                            ]
-                        }
-                    }
-                ]
-            },
-            //{ name: "实战波", totalMonsters: 1, reward: 800, spawnInterval: 2.5, preparationTime: 10,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "挑战波", totalMonsters: 1, reward: 1200, spawnInterval: 2.0, preparationTime: 10,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "精英波", totalMonsters: 1, reward: 1800, spawnInterval: 1.8, preparationTime: 10,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "生存波", totalMonsters: 1, reward: 2500, spawnInterval: 1.5, preparationTime: 8,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}]},
-            //{ name: "地狱波", totalMonsters: 1, reward: 3500, spawnInterval: 1.2, preparationTime: 5,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "终极波", totalMonsters: 1, reward: 5000, spawnInterval: 1.0, preparationTime: 5,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "无尽波", totalMonsters: 1, reward: 7000, spawnInterval: 0.8, preparationTime: 5,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            { name: "最终波", totalMonsters: 1, reward: 10000, spawnInterval: 0, preparationTime: 10,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100,attackdist:80}] }
-        ];
+        this.waves = wavesConfig;
     }
     // 开始指定波次
     /**
@@ -131,15 +62,10 @@ export class WaveManager {
         // 广播波次开始
         this.broadcastWaveStart(wave);
         
-        /////////////////////////////////////////////////////////////
-        
-        Instance.Msg(`=== 第 ${waveNumber} 波开始===`);
+        this.wavepretick=Instance.GetGameTime();
+        this.wavetime=wave.preparationTime;
+        this.waveenable=true;
 
-        // 触发回调
-        if (this.onWaveStart) {
-            this.onWaveStart(this.currentWave, wave);
-        }
-        
         return true;
     }
     // 获取当前波次信息
@@ -247,11 +173,22 @@ export class WaveManager {
         this.waveState = 'IDLE';
         Instance.Msg("波次已重置");
     }
-    /**
-     * @param {number} nowtime
-     */
-    tick(nowtime)
+    
+    tick()
     {
-        
+        if(this.waveenable)
+        {
+            const now=Instance.GetGameTime();
+            if(now-this.wavepretick>=this.wavetime)
+            {
+                Instance.Msg(`=== 第 ${this.currentWave} 波开始===`);
+
+                // 触发回调
+                if (this.onWaveStart) {
+                    this.onWaveStart(this.currentWave, this.getCurrentWave());
+                }
+            }
+            this.waveenable=false;
+        }
     }
 }

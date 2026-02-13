@@ -1,4 +1,4 @@
-import { Entity, Instance} from "cs_script/point_script";
+import { CSPlayerPawn, Entity, Instance} from "cs_script/point_script";
 import { Monster, MonsterState } from "./monster/monster";
 import { NavMesh } from "./monster/navmesh/path_manager";
 export class MonsterManager {
@@ -18,7 +18,8 @@ export class MonsterManager {
         this.onMonsterSpawn = null; // 怪物生成回调
         this.onMonsterDeath = null; // 怪物死亡回调
         this.onAllMonstersDead = null; // 所有怪物死亡回调
-        
+        this.onAttack=null;//怪物攻击回调
+        this.onSkill=null;//怪物技能回调
         /** @type {NavMesh} */
         this.pathfinder=new NavMesh();
         this.pathfinder.init();
@@ -42,6 +43,11 @@ export class MonsterManager {
         this.spawn=true;
         this.spawnconfig=waveConfig;
     }
+    // 停止生成怪物
+    stopWave()
+    {
+        this.spawn=false;
+    }
     // 生成单个怪物
     /**
      * @param {{name:string,totalMonsters:number,reward:number,spawnInterval:number,preparationTime:number,monsterTypes:{name: string, baseHealth: number, baseDamage: number, speed: number, reward: number}[]}} waveConfig
@@ -49,7 +55,13 @@ export class MonsterManager {
     spawnMonster(waveConfig) {
         try {
             // 获取生成点
-            const spawnPoints = Instance.FindEntitiesByName("monster_spawnpoint");
+            const spawnPointNames = waveConfig.monster_spawn_points_name;
+            /**@type {Entity[]} */
+            const spawnPoints =[];
+            spawnPointNames.forEach(e => {
+                const i=Instance.FindEntitiesByName(e);
+                spawnPoints.push(...i);
+            });
             if (spawnPoints.length === 0) {
                 Instance.Msg("错误: 未找到怪物生成点");
                 return null;
@@ -85,7 +97,12 @@ export class MonsterManager {
             monster.setOnDeath((monsterInstance, killer) => {
                 this.handleMonsterDeath(monsterInstance, killer);
             });
-            
+            monster.setOnAttack((damage, target)=>{
+                if(this.onAttack)this.onAttack(damage, target);
+            });
+            monster.setOnSkill((id,target)=>{
+                if(this.onSkill)this.onSkill(id,target);
+            });
             // 存储怪物
             this.monsters.set(monsterId, monster);
             this.activeMonsters++;
@@ -130,7 +147,7 @@ export class MonsterManager {
         }
         
         // 检查是否所有怪物都死亡了
-        if (this.activeMonsters <= 0) {
+        if (this.activeMonsters <= 0&&this.spawn==false) {
             this.triggerAllMonstersDead();
         }
         
@@ -182,7 +199,7 @@ export class MonsterManager {
         while (!this.pathlist.isEmpty()) 
         {
             const current = this.pathlist.pop();
-            if(current.node==first)
+            if(current.node==first||now-current.cost<=0.5)//不能更新太勤快，不然怪物在悬崖边旋转
             {
                 this.pathlist.push(current.node, current.cost);
                 break;//循环了说是，或者更新太快
@@ -214,10 +231,10 @@ export class MonsterManager {
                 this.spawn=false;
                 return;
             }
-            if(now-this.spawnpretick>=0.1)///////生成间隔
+            if(now-this.spawnpretick>=this.spawnconfig.spawnInterval)///////生成间隔
             {
                 //根据人数设置同一时间僵尸个数
-                if(this.activeMonsters>=1)return;///////生成个数
+                if(this.activeMonsters>=this.spawnconfig.aliveMonster)return;///////生成个数
                 if(this.spawnmonstercount<this.spawnconfig.totalMonsters)
                 {
                     let monster = this.spawnMonster(this.spawnconfig);
@@ -323,7 +340,19 @@ export class MonsterManager {
     setOnAllMonstersDead(callback) {
         this.onAllMonstersDead = callback;
     }
-    
+    /**
+     * @param {(damage: number, target: CSPlayerPawn) => void} callback
+     */
+    setOnAttack(callback) {
+        this.onAttack = callback;
+    }
+    // 设置技能回调，就是给玩家加buff
+    /**
+     * @param {(id: string, target: CSPlayerPawn) => void} callback
+     */
+    setOnSkill(callback) {
+        this.onSkill = callback;
+    }
     // 获取管理器状态
     getStatus() {
         return {

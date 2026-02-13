@@ -1,5 +1,6 @@
 import { Entity } from "cs_script/point_script";
 import { vec } from "../../util/vector";
+import { moveEpsilon, timeThreshold } from "../../game_const";
 
 export class AIStuckMonitor {
     /**
@@ -12,8 +13,8 @@ export class AIStuckMonitor {
         this.stuckTime = 0;
 
         // 参数（Source 风格）
-        this.moveEpsilon = 0.5;     // 认为“没动”的距离
-        this.timeThreshold = 2;     // 持续多久算卡死
+        this.moveEpsilon = moveEpsilon;     // 认为“没动”的距离
+        this.timeThreshold = timeThreshold;     // 持续多久算卡死
     }
     /**
      * 每帧调用

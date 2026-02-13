@@ -14,7 +14,7 @@ export class PlayerManager
         this.totalPlayers = 0; // 总玩家数
         /** @type {number} */
         this.readyCount = 0; // 准备玩家数
-        
+
         // 事件回调
         this.onPlayerJoin = null;
         this.onPlayerLeave = null;

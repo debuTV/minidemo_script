@@ -122,10 +122,7 @@ export class FunnelHeightFixer {
                 prep=result[result.length - 1];
             }
         }
-        // 最后一个点
-        ////result.push(funnelPath[funnelPath.length - 1]);
-        //删除起点和终点
-        return result.slice(1,result.length);
+        return result;
     }
 
     /* ===============================

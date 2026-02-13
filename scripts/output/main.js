@@ -1,4 +1,96 @@
-import { Instance, BaseModelEntity, PointTemplate, CSPlayerPawn, CSPlayerController } from 'cs_script/point_script';
+import { Instance, BaseModelEntity, PointTemplate, CSPlayerPawn } from 'cs_script/point_script';
+
+//待更新
+//1.怪物跳跃调参
+//2.产卵技能
+//3.玩家毒气debuff
+
+const targetTeam=5;      //怪物选取目标范围 t:2,ct:3  t+ct:5
+const gravity=800;       //世界重力
+const friction=6;        //摩擦力参数
+const stepHeight=13;     //怪物爬台阶高度
+const goalTolerance=8;   //路径切换距离
+const arriveDistance=1;  //距离最后一个导航点这个距离后，怪物不会再前进
+const moveEpsilon=0.5;   //移动小于这个距离，认为怪物没动
+const timeThreshold=2;   //等待多久后，认为怪物没动卡死
+
+//怪物移动时候的碰撞盒子，设置过大容易过不去门，设置过小容易造成怪物钻进墙里的错觉
+const Tracemins={x:-4,y:-4,z:1};
+const Tracemaxs={x:4,y:4,z:4};
+const groundCheckDist=8;//找地面时向下找多远
+const surfaceEpsilon=4;//每次移动离碰撞面多远
+//===================波次参数========================
+const wavesConfig=[
+        { 
+            name: "训练波", 
+            totalMonsters: 1000, 
+            reward: 500, 
+            spawnInterval: 3.0, 
+            preparationTime: 0, //波次开始到第一个怪物出现时间
+            aliveMonster:2, //同时存在的怪物数量
+            monster_spawn_points_name:["lv1_zako_teleport_01","lv1_zako_teleport_02"],//这一波生成点
+            monster_breakablemins:{x:-30,y:-30,z:0},//最大怪物的breakable的mins
+            monster_breakablemaxs:{x:30,y:30,z:75},//最大怪物的breakable的maxs
+            monsterTypes:[
+                {
+                    template_name:"headcrab_classic_template",
+                    name: "Zombie",
+                    baseHealth: 100,
+                    baseDamage: 10,
+                    speed: 150,
+                    reward: 100,
+                    attackdist:80,
+                    movementmode:"OnGround",
+                    skill_pool:[
+                        //{
+                        //    id:"pounce",//技能名称
+                        //    chance: 1,//技能获得概率
+                        //    params:{cooldowntime:5,distance:250,animation:"pounce"}
+                        //},
+                        //{
+                        //    id:"speed_boost",//技能名称
+                        //    chance: 0,//技能获得概率
+                        //    params:{multiplier:1.3}
+                        //},
+                        //{
+                        //    id: "hp_up",
+                        //    chance: 0,
+                        //    params: { value: 50 }
+                        //},
+                        //{
+                        //    id: "shield",
+                        //    chance: 0,
+                        //    params: {cooldowntime:15,runtime:-1,value:50}
+                        //}
+                    ],
+                    animations:{
+                        "idle":[
+                            "headcrab_classic_idle",
+                            "headcrab_classic_idle_b",
+                            "headcrab_classic_idle_c"
+                        ],
+                        "walk":[
+                            "headcrab_classic_walk",
+                            "headcrab_classic_run"
+                        ],
+                        "attack":[
+                            "headcrab_classic_attack_antic_02",
+                            "headcrab_classic_attack_antic_03",
+                            "headcrab_classic_attack_antic_04"
+                        ],
+                        "skill":[
+                            "headcrab_classic_attack_antic_02",
+                            "headcrab_classic_attack_antic_03",
+                            "headcrab_classic_attack_antic_04"
+                        ],
+                        "pounce":[
+                            "headcrab_classic_jumpattack"
+                        ]
+                    }
+                }
+            ]
+        },
+    ];
 
 class WaveManager {
     /**
@@ -16,6 +108,10 @@ class WaveManager {
         this.onWaveComplete = null; // 波次完成回调
         this.onWaveStart = null; // 波次开始回调
         this.initDefaultWaves();
+
+        this.wavepretick=-1;         //波次激活时间
+        this.wavetime=0;             //波次激活到开始的时间
+        this.waveenable=false;       //波次是否激活
     }
     // 设置回调
     /**
@@ -34,81 +130,7 @@ class WaveManager {
     // 初始化波次配置
     initDefaultWaves() {
         // 每波配置: { name, totalMonsters, reward, spawnInterval, preparationTime }
-        this.waves = [
-            { 
-                name: "训练波", 
-                totalMonsters: 1000, 
-                reward: 500, 
-                spawnInterval: 3.0, 
-                preparationTime: 15,
-                monsterTypes:[
-                    {
-                        template_name:"headcrab_classic_template",
-                        name: "Zombie",
-                        baseHealth: 100,
-                        baseDamage: 10,
-                        speed: 150,
-                        reward: 100,
-                        attackdist:80,
-                        movementmode:"OnGround",
-                        skill_pool:[
-                            //{
-                            //    id:"pounce",//技能名称
-                            //    chance: 1,//技能获得概率
-                            //    params:{cooldowntime:5,distance:250,animation:"pounce"}
-                            //},
-                            //{
-                            //    id:"speed_boost",//技能名称
-                            //    chance: 0,//技能获得概率
-                            //    params:{multiplier:1.3}
-                            //},
-                            //{
-                            //    id: "hp_up",
-                            //    chance: 0,
-                            //    params: { value: 50 }
-                            //},
-                            //{
-                            //    id: "shield",
-                            //    chance: 0,
-                            //    params: {cooldowntime:15,runtime:-1,value:50}
-                            //}
-                        ],
-                        animations:{
-                            "idle":[
-                                "headcrab_classic_idle",
-                                "headcrab_classic_idle_b",
-                                "headcrab_classic_idle_c"
-                            ],
-                            "walk":[
-                                "headcrab_classic_walk",
-                                "headcrab_classic_run"
-                            ],
-                            "attack":[
-                                "headcrab_classic_attack_antic_02",
-                                "headcrab_classic_attack_antic_03",
-                                "headcrab_classic_attack_antic_04"
-                            ],
-                            "skill":[
-                                "headcrab_classic_attack_antic_02",
-                                "headcrab_classic_attack_antic_03",
-                                "headcrab_classic_attack_antic_04"
-                            ],
-                            "pounce":[
-                                "headcrab_classic_jumpattack"
-                            ]
-                        }
-                    }
-                ]
-            },
-            //{ name: "实战波", totalMonsters: 1, reward: 800, spawnInterval: 2.5, preparationTime: 10,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "挑战波", totalMonsters: 1, reward: 1200, spawnInterval: 2.0, preparationTime: 10,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "精英波", totalMonsters: 1, reward: 1800, spawnInterval: 1.8, preparationTime: 10,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "生存波", totalMonsters: 1, reward: 2500, spawnInterval: 1.5, preparationTime: 8,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}]},
-            //{ name: "地狱波", totalMonsters: 1, reward: 3500, spawnInterval: 1.2, preparationTime: 5,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "终极波", totalMonsters: 1, reward: 5000, spawnInterval: 1.0, preparationTime: 5,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            //{ name: "无尽波", totalMonsters: 1, reward: 7000, spawnInterval: 0.8, preparationTime: 5,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100}] },
-            { name: "最终波", totalMonsters: 1, reward: 10000, spawnInterval: 0, preparationTime: 10,monsterTypes:[{name: "Zombie",baseHealth: 100,baseDamage: 10,speed: 250,reward: 100,attackdist:80}] }
-        ];
+        this.waves = wavesConfig;
     }
     // 开始指定波次
     /**
@@ -132,15 +154,10 @@ class WaveManager {
         // 广播波次开始
         this.broadcastWaveStart(wave);
         
-        /////////////////////////////////////////////////////////////
-        
-        Instance.Msg(`=== 第 ${waveNumber} 波开始===`);
+        this.wavepretick=Instance.GetGameTime();
+        this.wavetime=wave.preparationTime;
+        this.waveenable=true;
 
-        // 触发回调
-        if (this.onWaveStart) {
-            this.onWaveStart(this.currentWave, wave);
-        }
-        
         return true;
     }
     // 获取当前波次信息
@@ -248,12 +265,23 @@ class WaveManager {
         this.waveState = 'IDLE';
         Instance.Msg("波次已重置");
     }
-    /**
-     * @param {number} nowtime
-     */
-    tick(nowtime)
+    
+    tick()
     {
-        
+        if(this.waveenable)
+        {
+            const now=Instance.GetGameTime();
+            if(now-this.wavepretick>=this.wavetime)
+            {
+                Instance.Msg(`=== 第 ${this.currentWave} 波开始===`);
+
+                // 触发回调
+                if (this.onWaveStart) {
+                    this.onWaveStart(this.currentWave, this.getCurrentWave());
+                }
+            }
+            this.waveenable=false;
+        }
     }
 }
 
@@ -435,10 +463,10 @@ class AIMoveProbe {
         this.entity = entity;
 
         // 碰撞参数
-        this.mins = vec.get(-4,-4,1);//抬高一个高度
-        this.maxs = vec.get(4,4,4);
-        this.groundCheckDist = 8;
-        this.surfaceEpsilon = 4;
+        this.mins = Tracemins;//抬高一个高度
+        this.maxs = Tracemaxs;
+        this.groundCheckDist = groundCheckDist;
+        this.surfaceEpsilon = surfaceEpsilon;
     }
     // 扫描前方是否被阻挡
     /**
@@ -544,8 +572,8 @@ class AIStuckMonitor {
         this.stuckTime = 0;
 
         // 参数（Source 风格）
-        this.moveEpsilon = 0.5;     // 认为“没动”的距离
-        this.timeThreshold = 2;     // 持续多久算卡死
+        this.moveEpsilon = moveEpsilon;     // 认为“没动”的距离
+        this.timeThreshold = timeThreshold;     // 持续多久算卡死
     }
     /**
      * 每帧调用
@@ -583,11 +611,6 @@ class AIStuckMonitor {
         this.stuckTime = 0;
     }
 }
-
-//==================怪物相关设置================
-const gravity=800;      //世界重力
-const friction=6;       //摩擦力参数
-const stepHeight=13;    //怪物爬台阶高度
 
 class AIMotor {
     /**
@@ -714,7 +737,7 @@ class AIMotor {
 
         const drop = speed * friction * dt;
         const newSpeed = Math.max(0, speed - drop);
-
+        
         this.velocity = vec.scale2D(this.velocity,newSpeed / speed);
     }
 
@@ -1085,19 +1108,20 @@ class PathFollower {
          */
         this.path = [];             // NavPath
         this.cursor = 0;            // 当前 area index
-        this.goalTolerance = 16;    // 认为“到达”的距离
     }
 
     /**
      * @param {{ pos: import("cs_script/point_script").Vector; mode: number; }[]} path
      */
     setPath(path) {
-        this.path = path;
+        this.path = path.map(function (i) {
+            return { pos: vec.clone(i.pos), mode: i.mode };
+        });
         this.cursor = 0;
     }
 
     isFinished() {
-        return this.path.length==0 || this.cursor >= this.path.length;
+        return this.path.length == 0 || this.cursor >= this.path.length;
     }
 
     clear() {
@@ -1115,15 +1139,26 @@ class PathFollower {
      * 如果足够接近当前目标，则推进 cursor
      * @param {import("cs_script/point_script").Vector} currentPos
      */
-    advanceIfReached(currentPos, tolerance = this.goalTolerance) {
-        if (this.isFinished()) return;
+    advanceIfReached(currentPos, tolerance = goalTolerance) {
+        while (true) {
+            if (this.isFinished()) return;
 
-        const goal = this.getMoveGoal();
-        if (!goal) return;
+            const goal = this.getMoveGoal();
+            if (!goal) return;
 
-        const dist = vec.length2D(vec.sub(currentPos,goal.pos));
-        if (dist <= tolerance) {
-            this.cursor++;
+            const dist = vec.length2D(vec.sub(currentPos, goal.pos));
+            if(goal.mode==PathState.JUMP)
+            {
+                if (dist <= 2){//跳跃检查更严格，让其停稳
+                    this.cursor++;
+                    continue;
+                }
+            }
+            else if (dist <= tolerance) {
+                this.cursor++;
+                continue;
+            }
+            break;
         }
     }
 }
@@ -1154,15 +1189,12 @@ class MoveWalk extends MoveMode {
      */
     update(loco, dt, mpos) {
         // 计算寻路输入
+        loco.pathFollower.advanceIfReached(loco.entity.GetAbsOrigin());
         const goal = loco.pathFollower.getMoveGoal();
-
         //这里可以切换跳跃
-
         loco._computeWish(goal);
-
         // 地面移动
-        const newpos=loco.motor.moveGround(loco.wishDir, loco.wishSpeed, dt, mpos);
-        loco.pathFollower.advanceIfReached(newpos);
+        loco.motor.moveGround(loco.wishDir, loco.wishSpeed, dt, mpos);
 
         // 自动切换到空中
         if (!loco.motor.isOnGround()) {
@@ -1179,12 +1211,11 @@ class MoveAir extends MoveMode {
      */
     update(loco, dt, mpos) {
         // 计算寻路输入
+        loco.pathFollower.advanceIfReached(loco.entity.GetAbsOrigin());
         const goal = loco.pathFollower.getMoveGoal();
         loco._computeWish(goal);
-
         // 空中仍可有少量方向控制（可调）
-        const newpos=loco.motor.moveAir(loco.wishDir, 30,dt, mpos);
-        loco.pathFollower.advanceIfReached(newpos);
+        loco.motor.moveAir(loco.wishDir, 30,dt, mpos);
 
         // 落地 → 回到 Walk
         if (loco.motor.isOnGround()) {
@@ -1328,7 +1359,6 @@ class NPCLocomotion {
         
         //基础属性
         this.maxSpeed = 120;       // 怪物速度
-        this.arriveDistance = 15;   // 接近目标后认为“到达”,要比攻击距离远
 
         // 状态缓存
         this._isStopped = true;
@@ -1366,8 +1396,8 @@ class NPCLocomotion {
      * @param {Entity[]} mpos
      */
     update(dt,mpos) {
-        this.maxSpeed=this.monster.speed;
-        this.arriveDistance=Math.max(1,this.monster.attackdist-5);
+        this.maxSpeed=this.monster.speed;//先实时更新速度
+        //this.arriveDistance=Math.max(1,this.monster.attackdist-5);
         if (this._isStopped) return;
         this.controller.update(dt, mpos);
     }
@@ -1395,23 +1425,23 @@ class NPCLocomotion {
         {
             //暂定========================================
             // 已经非常接近 → 停止
-            if (dist <= 4) {
+            if (dist <= arriveDistance) {
                 this.wishDir=vec.get(0,0,0);
                 this.wishSpeed = this.maxSpeed;
                 return;
             }
+            
             this.wishDir=vec.normalize(toGoal);
-            this.wishSpeed = this.maxSpeed*3;
+            this.wishSpeed = 250;
         }
         else
         {
             // 已经非常接近 → 停止
-            if (dist <= this.arriveDistance) {
+            if (dist <= arriveDistance) {
                 this.wishDir=vec.get(0,0,0);
                 this.wishSpeed = this.maxSpeed;
                 return;
             }
-
             // 2d方向
             this.wishDir=vec.normalize2D(toGoal);
 
@@ -1479,6 +1509,9 @@ class MonsterAnimator {
             case MonsterState.SKILL:
                 this.play("skill");
                 break;
+            case MonsterState.DEAD:
+                this.play("dead");
+                break;
         }
     }
     /**
@@ -1514,6 +1547,9 @@ class MonsterAnimator {
             case MonsterState.SKILL:
                 this.play("skill");
                 break;
+            case MonsterState.DEAD:
+                this.play("dead");
+                break;
         }
     }
     /**
@@ -1531,7 +1567,7 @@ class MonsterAnimator {
 
 const ASTAR_HEURISTIC_SCALE = 1.2;                         //A*推荐数值
 //Funnel参数
-const FUNNEL_DISTANCE = 25;                                //拉直的路径距离边缘多远(0-100，百分比，100%意味着只能走边的中点)
+const FUNNEL_DISTANCE = 12;                                //拉直的路径距离边缘多远(0-100，百分比，100%意味着只能走边的中点)
 //高度修正参数
 const ADJUST_HEIGHT_DISTANCE = 50;                        //路径中每隔这个距离增加一个点，用于修正高度
 /**
@@ -1750,10 +1786,7 @@ class FunnelHeightFixer {
                 prep=result[result.length - 1];
             }
         }
-        // 最后一个点
-        ////result.push(funnelPath[funnelPath.length - 1]);
-        //删除起点和终点
-        return result.slice(1,result.length);
+        return result;
     }
 
     /* ===============================
@@ -2664,7 +2697,7 @@ class NavMesh {
         //Instance.DebugSphere({center:polyPath.end,radius:1,duration:1});
         //Instance.Msg("heightfixer:"+ans.length);
         if (!ans || ans.length === 0) return [];
-        this.debugDrawPath(ans,1/2);
+        this.debugDrawPath(ans,1/32);
 
         //多边形总数：1025跳点数：162
         //100次A*           68ms
@@ -3349,13 +3382,18 @@ class Monster {
         this.attackdist = typeConfig.attackdist;
         /** @type {number} */
         this.baseReward = typeConfig.reward;
+        this.atc=typeConfig.attackCooldown;
 
         this.occupation = "";
 
         //死亡回调
+        this.killer=null;
         this.onDeath = null;
         this.initEntities(position,typeConfig.template_name);
         
+        this.onAttack = null;
+        this.onSkill=null;
+
         this.state = MonsterState.IDLE;
         this.target = null;
         this.lastTargetUpdate = 0;
@@ -3381,6 +3419,11 @@ class Monster {
         this.animator.setonStateFinish((state)=>{
             if(state==MonsterState.ATTACK)this.onOccupationEnd("attack");
             else if(state==MonsterState.SKILL)this.onOccupationEnd("skill");
+            else if(state==MonsterState.DEAD){
+                //清理模型
+                this.model.Remove();
+                this.breakable.Remove();
+            }
         });
         //每次只执行一个skill，后一个skill覆盖前一个skill
         this.skillRequestid="";
@@ -3452,6 +3495,7 @@ class Monster {
      * @param {CSPlayerPawn | null} attacker
      */
     takeDamage(amount, attacker) {
+        if (this.state==MonsterState.DEAD)return true; // 死亡
         const previousHealth = this.health;
         this.health -= amount;
         this.emitEvent({ type: "OntakeDamage",value:amount,health:this.health});
@@ -3467,16 +3511,18 @@ class Monster {
      */
     die(killer) {
         // 播放死亡效果
+        Instance.EntFireAtTarget({target:this.breakable,input:"fireuser1",activator:killer??this.target??undefined});
         this.state=MonsterState.DEAD;
         this.emitEvent({ type: "OnDie"});
         // 触发死亡回调
         if (this.onDeath) {
             this.onDeath(this, killer);
         }
-        
-        // 清理模型
-        this.model.Remove();
-        this.breakable.Remove();
+        this.killer=killer;
+        // 清理模型,不应该立即清理，这里强制播放死亡动画，等动画播放完后清理
+        ///this.model.Remove();
+        ///this.breakable.Remove();
+        this.animator.enter(MonsterState.DEAD);
         Instance.Msg(`怪物 #${this.id} 死亡`);
     }
     // 设置死亡回调
@@ -3486,7 +3532,20 @@ class Monster {
     setOnDeath(callback) {
         this.onDeath = callback;
     }
-
+    // 设置攻击回调
+    /**
+     * @param {(damage: number, target: CSPlayerPawn) => void} callback
+     */
+    setOnAttack(callback) {
+        this.onAttack = callback;
+    }
+    // 设置技能回调，就是给玩家加buff
+    /**
+     * @param {(id: string, target: CSPlayerPawn) => void} callback
+     */
+    setOnSkill(callback) {
+        this.onSkill = callback;
+    }
     /**
      * @param {Entity[]} allmpos
      */
@@ -3552,7 +3611,7 @@ class Monster {
         let best = null;
         let bestDist = Infinity;
         for (const p of players) {
-            if (!(p instanceof CSPlayerPawn) || !p.IsAlive()) continue;
+            if (!(p instanceof CSPlayerPawn) || !p.IsAlive()||(p.GetTeamNumber()&targetTeam)!=1) continue;
             const d = this.distanceTo(p);
             if (d < bestDist) {
                 best = p;
@@ -3659,7 +3718,7 @@ class Monster {
     enterAttack() {
         if (!this.target) return;
         this.occupation= "attack";
-        this.attackCooldown = 3.0; // 攻击间隔
+        this.attackCooldown = this.atc; // 攻击间隔
 
         const a = this.breakable.GetAbsOrigin();
         const b = this.target.GetAbsOrigin();
@@ -3673,6 +3732,12 @@ class Monster {
         //这里造成伤害
         300 / Math.hypot(b.x - a.x, b.y - a.y);
         this.emitEvent({ type: "OnattackTrue"});
+
+        {
+            //手动造成伤害
+            this.target.TakeDamage({damage:this.damage});
+            return;
+        }
         //this.target.Teleport({
         //    velocity: { x: (b.x - a.x) * l, y: (b.y - a.y) * l, z: 150 }
         //});
@@ -3732,7 +3797,8 @@ class MonsterManager {
         this.onMonsterSpawn = null; // 怪物生成回调
         this.onMonsterDeath = null; // 怪物死亡回调
         this.onAllMonstersDead = null; // 所有怪物死亡回调
-        
+        this.onAttack=null;//怪物攻击回调
+        this.onSkill=null;//怪物技能回调
         /** @type {NavMesh} */
         this.pathfinder=new NavMesh();
         this.pathfinder.init();
@@ -3756,6 +3822,11 @@ class MonsterManager {
         this.spawn=true;
         this.spawnconfig=waveConfig;
     }
+    // 停止生成怪物
+    stopWave()
+    {
+        this.spawn=false;
+    }
     // 生成单个怪物
     /**
      * @param {{name:string,totalMonsters:number,reward:number,spawnInterval:number,preparationTime:number,monsterTypes:{name: string, baseHealth: number, baseDamage: number, speed: number, reward: number}[]}} waveConfig
@@ -3763,7 +3834,13 @@ class MonsterManager {
     spawnMonster(waveConfig) {
         try {
             // 获取生成点
-            const spawnPoints = Instance.FindEntitiesByName("monster_spawnpoint");
+            const spawnPointNames = waveConfig.monster_spawn_points_name;
+            /**@type {Entity[]} */
+            const spawnPoints =[];
+            spawnPointNames.forEach(e => {
+                const i=Instance.FindEntitiesByName(e);
+                spawnPoints.push(...i);
+            });
             if (spawnPoints.length === 0) {
                 Instance.Msg("错误: 未找到怪物生成点");
                 return null;
@@ -3799,7 +3876,12 @@ class MonsterManager {
             monster.setOnDeath((monsterInstance, killer) => {
                 this.handleMonsterDeath(monsterInstance, killer);
             });
-            
+            monster.setOnAttack((damage, target)=>{
+                if(this.onAttack)this.onAttack(damage, target);
+            });
+            monster.setOnSkill((id,target)=>{
+                if(this.onSkill)this.onSkill(id,target);
+            });
             // 存储怪物
             this.monsters.set(monsterId, monster);
             this.activeMonsters++;
@@ -3844,7 +3926,7 @@ class MonsterManager {
         }
         
         // 检查是否所有怪物都死亡了
-        if (this.activeMonsters <= 0) {
+        if (this.activeMonsters <= 0&&this.spawn==false) {
             this.triggerAllMonstersDead();
         }
         
@@ -3896,7 +3978,7 @@ class MonsterManager {
         while (!this.pathlist.isEmpty()) 
         {
             const current = this.pathlist.pop();
-            if(current.node==first)
+            if(current.node==first||now-current.cost<=0.5)//不能更新太勤快，不然怪物在悬崖边旋转
             {
                 this.pathlist.push(current.node, current.cost);
                 break;//循环了说是，或者更新太快
@@ -3928,10 +4010,10 @@ class MonsterManager {
                 this.spawn=false;
                 return;
             }
-            if(now-this.spawnpretick>=0.1)///////生成间隔
+            if(now-this.spawnpretick>=this.spawnconfig.spawnInterval)///////生成间隔
             {
                 //根据人数设置同一时间僵尸个数
-                if(this.activeMonsters>=1)return;///////生成个数
+                if(this.activeMonsters>=this.spawnconfig.aliveMonster)return;///////生成个数
                 if(this.spawnmonstercount<this.spawnconfig.totalMonsters)
                 {
                     let monster = this.spawnMonster(this.spawnconfig);
@@ -4037,7 +4119,19 @@ class MonsterManager {
     setOnAllMonstersDead(callback) {
         this.onAllMonstersDead = callback;
     }
-    
+    /**
+     * @param {(damage: number, target: CSPlayerPawn) => void} callback
+     */
+    setOnAttack(callback) {
+        this.onAttack = callback;
+    }
+    // 设置技能回调，就是给玩家加buff
+    /**
+     * @param {(id: string, target: CSPlayerPawn) => void} callback
+     */
+    setOnSkill(callback) {
+        this.onSkill = callback;
+    }
     // 获取管理器状态
     getStatus() {
         return {
@@ -4154,1141 +4248,12 @@ class MinHeap {
     }
 }
 
-//import {hud} from "./hud";
-//import {env_hudhint} from "./env_hudhint";
-
-class player_data
-{
-    /**
-     * @param {number} playerSlot
-     */
-    constructor(playerSlot) {
-        this.id = 0; // 玩家唯一ID
-        this.slot = playerSlot; // 玩家槽位
-        this.controller = null; // 玩家控制器
-        this.pawn = null; // 玩家实体
-        
-        // 游戏数据
-        this.money = 0;
-        this.exp = 0;
-        this.level = 0;
-        this.maxhealth = 100;
-        this.armor = 0;
-        this.health = 100;
-        this.score = 0;
-        this.kills = 0;
-        
-        // 状态标志
-        this.isReady = false;
-        this.isAlive = false;
-        this.isConnected = false;
-        this.isInGame = false;
-        
-        // 游戏进度
-        this.waveProgress = 0;
-        this.damageDealt = 0;
-        this.headshots = 0;
-        
-        // 商店相关
-        //this.upgrades = new Map(); // 升级项
-        //this.equippedItems = []; // 装备物品
-        // 事件回调
-        this.onDeath = null;
-    }
-    // 更新玩家实体引用
-    /**
-     * @param {CSPlayerController} controller
-     * @param {CSPlayerPawn} pawn
-     */
-    updateEntityReferences(controller, pawn) {
-        if (controller) {
-            this.controller = controller;
-        }
-        if (pawn) {
-            this.pawn = pawn;
-        }
-    }
-    openshop()
-    {
-
-    }
-    // 增加金钱
-    /**
-     * @param {number} amount
-     */
-    addMoney(amount) {
-        this.money += Math.max(0, amount);
-        return this.money;
-    }
-    
-    // 扣除金钱
-    /**
-     * @param {number} amount
-     */
-    deductMoney(amount) {
-        if (this.money >= amount) {
-            this.money -= amount;
-            return true;
-        }
-        return false;
-    }
-    
-    // 增加经验
-    /**
-     * @param {number} amount
-     */
-    addExp(amount) {
-        this.exp += Math.max(0, amount);
-        this.checkLevelUp();
-        return this.exp;
-    }
-    
-    // 检查升级
-    checkLevelUp() {
-        const expNeeded = 100 + (this.level * 50);
-        if (this.exp >= expNeeded) {
-            this.level++;
-            this.exp -= expNeeded;
-            return true;
-        }
-        return false;
-    }
-    // 治疗玩家
-    /**
-     * @param {number} amount
-     */
-    heal(amount) {
-        if (!this.isAlive || !this.pawn || !this.pawn.IsValid()) return false;
-        
-        const newHealth = Math.min(this.health + amount, this.maxhealth);
-        const actualHeal = newHealth - this.health;
-        
-        if (actualHeal > 0) {
-            // 更新脚本记录
-            this.health = newHealth;
-            // 更新游戏实体
-            this.pawn.SetHealth(this.health);
-            
-            // 可以添加治疗特效
-            this.createHealEffect(actualHeal);
-            
-            return true;
-        }
-        return true;
-    }
-    
-    // 给予护甲
-    /**
-     * @param {number} amount
-     */
-    giveArmor(amount) {
-        if (!this.isAlive || !this.pawn || !this.pawn.IsValid()) return false;
-        
-        const newArmor = Math.min(this.armor + amount, 100);
-        const actualArmor = newArmor - this.armor;
-        
-        if (actualArmor > 0) {
-            // 更新脚本记录
-            this.armor = newArmor;
-            // 更新游戏实体
-            this.pawn.SetArmor(this.armor);
-            
-            // 可以添加护甲获得特效
-            this.createArmorEffect(actualArmor);
-            
-            return true;
-        }
-        return false;
-    }
-    // 复活玩家
-    respawn(health = 100, armor = 0) {
-        if (!this.controller || !this.controller.IsValid()) return false;
-        try {
-            // 确保pawn存在且有效
-            if (!this.pawn || !this.pawn.IsValid()) {
-                // 尝试重新获取pawn
-                this.pawn = this.controller.GetPlayerPawn();
-                if (!this.pawn || !this.pawn.IsValid()) {
-                    return false; // 需要等待重生完成
-                }
-            }
-            
-            // 设置生命值和护甲
-            this.health = Math.max(0, Math.min(health, this.maxhealth));
-            this.isAlive = true;
-            
-            // 确保玩家处于活动状态
-            this.controller.JoinTeam(3);
-            
-            // 更新游戏实体
-            this.pawn.SetHealth(this.health);
-            this.pawn.SetMaxHealth(this.maxhealth);
-
-            this.giveArmor(Math.max(0, Math.min(armor, 100)));
-            // 给予基础装备
-            this.giveBaseEquipment();
-            
-            // 重生特效
-            this.createRespawnEffect();
-            
-            Instance.Msg(`玩家 ${this.controller.GetPlayerName()} 已复活 (HP: ${this.health}, 护甲: ${this.armor})`);
-            
-            return true;
-        } catch (error) {
-            Instance.Msg(`复活玩家 ${this.controller?.GetPlayerName()} 失败: ${error}`);
-            return false;
-        }
-    }
-    // 受到怪物伤害
-    /**
-     * @param {number} damage
-     * @param {Entity|null|undefined} attacker
-     * @param {Entity|null|undefined} inflictor
-    */
-    takeDamage(damage,attacker,inflictor) {
-        if (!this.isAlive || !this.pawn || !this.pawn.IsValid()) return false;
-        
-        // 更新脚本记录
-        this.armor = this.pawn.GetArmor();
-        this.health = this.pawn.GetHealth();
-      
-        // 如果生命值归零，标记死亡
-        if (this.health <= 0) {
-            this.isAlive = false;
-            
-            // 触发死亡事件（如果有回调的话）
-            if (this.onDeath) {
-                this.onDeath(this, attacker);
-            }
-
-            // 如果死亡，设置玩家为观察者模式
-            if (this.controller && this.controller.IsValid()) {
-                // 这里可以添加死亡后的观察逻辑
-                this.controller.JoinTeam(1);
-            }
-            
-            Instance.Msg(`玩家 ${this.controller?.GetPlayerName()} 死亡 (受到 ${damage} 伤害)`);
-            return true; // 死亡
-        } else {
-            Instance.Msg(`玩家 ${this.controller?.GetPlayerName()} 受到 ${damage} 伤害 (生命: ${this.health}, 护甲: ${this.armor})`);
-            return false; // 存活
-        }
-    }
-    /**
-     * 创建治疗特效
-     * @param {number} healAmount
-     */
-    createHealEffect(healAmount) {
-        if (!this.pawn || !this.pawn.IsValid()) return;
-        
-        // 在玩家位置创建治疗粒子效果
-        Instance.EntFireAtName({
-            name: "heal_particle_template", // 假设有一个治疗粒子模板
-            input: "ForceSpawn",
-            activator: this.pawn
-        });
-        
-        // 播放治疗音效
-        Instance.EntFireAtTarget({
-            target: this.pawn,
-            input: "PlaySound",
-            value: "UI/Beep07.wav"
-        });
-        
-        // 屏幕效果（绿色闪烁）
-        Instance.ClientCommand(this.slot, "r_screenoverlay effects/heal_screen.vtf");
-    }
-
-    /**
-     * 创建护甲获得特效
-     * @param {number} armorAmount
-     */
-    createArmorEffect(armorAmount) {
-        if (!this.pawn || !this.pawn.IsValid()) return;
-        
-        // 护甲粒子效果
-        Instance.EntFireAtName({
-            name: "armor_particle_template", // 假设有一个护甲粒子模板
-            input: "ForceSpawn",
-            activator: this.pawn
-        });
-        
-        // 播放护甲音效
-        Instance.EntFireAtTarget({
-            target: this.pawn,
-            input: "PlaySound",
-            value: "items/itempickup.wav"
-        });
-    }
-
-    /**
-     * 创建重生特效
-     */
-    createRespawnEffect() {
-        if (!this.pawn || !this.pawn.IsValid()) return;
-        
-        // 重生粒子效果
-        Instance.EntFireAtName({
-            name: "respawn_particle_template",
-            input: "ForceSpawn",
-            activator: this.pawn
-        });
-        
-        // 重生音效
-        Instance.EntFireAtTarget({
-            target: this.pawn,
-            input: "PlaySound",
-            value: "ambient/atmosphere/cave_hit5.wav"
-        });
-    }
-    /**
-     * 给予基础装备
-     */
-    giveBaseEquipment() {
-        if (!this.pawn || !this.pawn.IsValid()) return;
-        
-        // 清除现有武器
-        this.pawn.DestroyWeapons();
-        
-        // 给予基础武器
-        this.pawn.GiveNamedItem("weapon_knife", true);
-        this.pawn.GiveNamedItem("weapon_glock", true);
-
-    }
-    // 7. 设置死亡回调的方法
-    /**
-     * @param {(playerData: player_data, killer: Entity|null|undefined) => void} callback
-     */
-    setOnDeath(callback) {
-        this.onDeath = callback;
-    }
-    // 获取玩家信息摘要
-    getSummary() {
-        return {
-            id: this.id,
-            name: this.controller ? this.controller.GetPlayerName() : "Unknown",
-            slot: this.slot,
-            level: this.level,
-            money: this.money,
-            health: this.health,
-            armor: this.armor,
-            kills: this.kills,
-            score: this.score,
-            isReady: this.isReady,
-            isAlive: this.isAlive
-        };
-    }
-}
-
-class PlayerManager
-{
-    constructor() {
-        /** @type {Map<number,player_data>} */
-        this.players = new Map(); // slot -> player_data
-        /** @type {number} */
-        this.nextPlayerId = 1; // 下一个玩家ID
-        /** @type {number} */
-        this.totalPlayers = 0; // 总玩家数
-        /** @type {number} */
-        this.readyCount = 0; // 准备玩家数
-        
-        // 事件回调
-        this.onPlayerJoin = null;
-        this.onPlayerLeave = null;
-        this.onPlayerReady = null;
-        this.onPlayerDeath = null;
-        this.onPlayerRespawn = null;
-        this.onPlayerMoneyChange = null;
-        this.onPlayerLevelUp = null;
-    }
-    setupEventListeners() {
-        //将在脚本加载前的玩家加入到data内
-        const players = Instance.FindEntitiesByClass("player");
-        for (const player of players) {
-            if (player && player instanceof CSPlayerPawn) {
-                const controller=player.GetPlayerController();
-                this.handlePlayerConnect(controller);
-                if(player.IsAlive()){
-                    this.handlePlayerActivate(controller);
-                }
-            }
-        }
-        // 监听玩家连接
-        Instance.OnPlayerConnect((event) => {
-            //Instance.Msg("玩家连接");
-            this.handlePlayerConnect(event.player);
-        });
-        
-        // 监听玩家激活
-        Instance.OnPlayerActivate((event) => {
-            //Instance.Msg("玩家激活");
-            this.handlePlayerActivate(event.player);
-        });
-        
-        // 监听玩家断开
-        Instance.OnPlayerDisconnect((event) => {
-            //Instance.Msg("玩家断开");
-            this.handlePlayerDisconnect(event.playerSlot);
-        });
-        
-        // 监听玩家重置（重生/换队）
-        Instance.OnPlayerReset((event) => {
-            Instance.Msg("玩家重置");
-            this.handlePlayerReset(event.player);
-        });
-        
-        // 监听玩家死亡
-        Instance.OnPlayerKill((event) => {
-            //Instance.Msg("玩家死亡");
-            this.handlePlayerDeath(event.player);
-        });
-        
-        // 监听玩家聊天
-        Instance.OnPlayerChat((event) => {
-            //Instance.Msg("玩家聊天");
-            this.handlePlayerChat(event.player, event.text);
-        });
-        
-        // 监听伤害事件，从高处落下触发1和2,takeDamage触发1和2
-        Instance.OnBeforePlayerDamage((event) => {
-            Instance.Msg("玩家伤害1");
-            this.handleBeforePlayerDamage(event);
-        });
-        
-        //pawn.SetHealth只触发2
-        Instance.OnPlayerDamage((event) => {
-            Instance.Msg("玩家伤害2");
-            this.handlePlayerDamage(event);
-        });
-        Instance.OnScriptInput("shop",(e)=>{
-            const player=e.activator;
-            if (player && player instanceof CSPlayerController) {
-                this.players.get(player.GetPlayerSlot())?.openshop();
-            }
-        });
-    }
-    // 处理玩家连接
-    /**
-     * @param {CSPlayerController|undefined} controller
-     */
-    handlePlayerConnect(controller) {
-        if (!controller) return;
-        
-        const playerSlot = controller.GetPlayerSlot();
-
-        // 创建玩家数据
-        const playerData = new player_data(playerSlot);
-        playerData.id = this.nextPlayerId++;
-        playerData.controller = controller;
-        playerData.isConnected = true;
-        
-        // 存储玩家数据
-        this.players.set(playerSlot, playerData);
-        this.totalPlayers++;
-        
-        Instance.Msg(`玩家 ${controller.GetPlayerName()} 加入游戏 (ID: ${playerData.id})`);
-        
-        // 触发回调
-        if (this.onPlayerJoin) {
-            this.onPlayerJoin(playerData);
-        }
-        
-        // 发送欢迎消息
-        this.sendWelcomeMessage(playerSlot);
-    }
-    
-    // 处理玩家激活
-    /**
-     * @param {CSPlayerController|undefined} controller
-     */
-    handlePlayerActivate(controller) {
-        if (!controller) return;
-        
-        const playerSlot = controller.GetPlayerSlot();
-        const playerData = this.players.get(playerSlot);
-        
-        if (playerData) {
-            playerData.pawn = controller.GetPlayerPawn();
-            playerData.isInGame = true;
-            playerData.isAlive = true;
-
-            // 初始化玩家游戏内状态
-            this.initializePlayer(playerData);
-            
-            Instance.Msg(`玩家 ${controller.GetPlayerName()} 已激活`);
-        }
-    }
-    
-    // 处理玩家断开
-    /**
-     * @param {number} playerSlot
-     */
-    handlePlayerDisconnect(playerSlot) {
-        const playerData = this.players.get(playerSlot);
-        
-        if (playerData) {
-            Instance.Msg(`玩家 ${playerData.controller?.GetPlayerName() || "Unknown"} 离开游戏`);
-            
-            // 移除准备状态
-            if (playerData.isReady) {
-                this.readyCount--;
-            }
-            
-            // 触发回调
-            if (this.onPlayerLeave) {
-                this.onPlayerLeave(playerData);
-            }
-            
-            // 从管理器中移除
-            this.players.delete(playerSlot);
-            this.totalPlayers--;
-        }
-    }
-    
-    // 处理玩家重置
-    /**
-     * @param {CSPlayerPawn} pawn
-     */
-    handlePlayerReset(pawn) {
-        if (!pawn) return;
-        
-        const playerData = this.getPlayerByPawn(pawn);
-
-        if (playerData) {
-            // 玩家重生，更新状态
-            playerData.pawn = pawn;
-            playerData.isAlive = true;
-            const oldHealth = playerData.health;
-            // 模拟受到伤害
-            if (playerData.pawn && playerData.pawn.IsValid()) {
-                Instance.Msg(playerData.health);
-                Instance.Msg(Math.max(0, oldHealth - 0));
-                playerData.pawn.SetHealth(Math.max(0, oldHealth - 0));
-                playerData.takeDamage(0,null,null); // 更新脚本记录
-                if (playerData.health <= 0) {
-                    playerData.isAlive = false;
-                }
-            }
-            // 触发重生回调
-            if (this.onPlayerRespawn) {
-                this.onPlayerRespawn(playerData);
-            }
-        }
-        else
-        {
-            this.handlePlayerConnect(pawn.GetPlayerController());
-            this.handlePlayerActivate(pawn.GetPlayerController());
-        }
-    }
-    
-    // 处理玩家死亡
-    /**
-     * @param {CSPlayerPawn} playerPawn
-     */
-    handlePlayerDeath(playerPawn) {
-        const playerData = this.getPlayerByPawn(playerPawn);
-        
-        if (playerData) {
-            playerData.isAlive = false;
-            
-            // 触发死亡回调
-            if (this.onPlayerDeath) {
-                this.onPlayerDeath(playerPawn);
-            }
-        }
-    }
-    
-    // 处理玩家聊天
-    /**
-     * @param {CSPlayerController|undefined} controller
-     * @param {string} text
-     */
-    handlePlayerChat(controller, text) {
-        if (!controller) return;
-        const playerData = this.getPlayerByController(controller);
-        if (!playerData) return;
-        const command = text.trim().toLowerCase();
-        // 处理准备命令
-        if (command === "!r" || command === "!ready") {
-            this.setPlayerReady(playerData.slot, true);
-        }
-        
-        // 处理取消准备
-        if (command === "!ur" || command === "!unready") {
-            this.setPlayerReady(playerData.slot, false);
-        }
-        
-        // 处理金钱命令
-        if (command === "!money" || command === "!cash") {
-            this.sendPlayerMoney(playerData.slot);
-        }
-        
-        // 处理状态命令
-        if (command === "!stats" || command === "!status") {
-            this.sendPlayerStats(playerData.slot);
-        }
-        // ========== 添加测试命令 ==========
-    
-        // 测试命令：显示玩家所有数据
-        if (command === "!test_data") {
-            const summary = playerData.getSummary();
-            this.sendMessage(playerData.slot, `=== 玩家数据测试 ===`);
-            this.sendMessage(playerData.slot, `ID: ${summary.id}, 名称: ${summary.name}`);
-            this.sendMessage(playerData.slot, `等级: ${summary.level}, 金钱: $${summary.money}`);
-            this.sendMessage(playerData.slot, `生命: ${summary.health}/${playerData.maxhealth}, 护甲: ${summary.armor}`);
-            this.sendMessage(playerData.slot, `击杀: ${summary.kills}, 分数: ${summary.score}`);
-            this.sendMessage(playerData.slot, `准备: ${summary.isReady ? '是' : '否'}, 存活: ${summary.isAlive ? '是' : '否'}`);
-            return;
-        }
-        // 测试命令：复活玩家
-        if (command === "!test_respawn") {
-            if (!playerData.isAlive) {
-                const respawned = playerData.respawn(100, 50);
-                if (respawned) {
-                    this.sendMessage(playerData.slot, `测试: 玩家已复活 (HP: 100, 护甲: 50)`);
-                } else {
-                    this.sendMessage(playerData.slot, `测试: 复活失败`);
-                }
-            } else {
-                this.sendMessage(playerData.slot, `测试: 玩家已存活，无需复活`);
-            }
-            return;
-        }
-        
-        // 测试命令：模拟受到伤害
-        if (command.startsWith("!test_damage ")) {
-            const amount = parseInt(command.split(" ")[1]);
-            if (!isNaN(amount)) {
-                const oldHealth = playerData.health;
-                // 模拟受到伤害
-                if (playerData.pawn && playerData.pawn.IsValid()) {
-                    playerData.pawn.SetHealth(Math.max(0, oldHealth - amount));
-                    playerData.takeDamage(amount,null,null); // 更新脚本记录
-                    this.sendMessage(playerData.slot, `测试: 受到伤害 ${oldHealth} -> ${playerData.health} (-${amount})`);
-                    if (playerData.health <= 0) {
-                        this.sendMessage(playerData.slot, `测试: 玩家已死亡`);
-                        playerData.isAlive = false;
-                    }
-                } else {
-                    this.sendMessage(playerData.slot, `测试: 玩家实体无效`);
-                }
-            }
-            return;
-        }
-        
-        // 测试命令：显示玩家管理器状态
-        if (command === "!test_pmstatus") {
-            const status = this.getStatus();
-            const stats = this.getPlayerStats();
-            this.sendMessage(playerData.slot, `=== 玩家管理器状态 ===`);
-            this.sendMessage(playerData.slot, `总玩家: ${status.totalPlayers}, 准备: ${status.readyCount}`);
-            this.sendMessage(playerData.slot, `活跃: ${stats.active}, 存活: ${stats.alive}`);
-            this.sendMessage(playerData.slot, `下一个玩家ID: ${status.nextPlayerId}`);
-            return;
-        }
-    }
-    //重置所有玩家数据
-    resetPlayerGameStatus()
-    {
-        for (const [slot, playerData] of this.players) {
-            playerData.health = 100;
-            playerData.maxhealth = 100;
-            playerData.armor = 100;
-            playerData.isAlive = true;
-
-            this.giveStartingEquipment(playerData);
-        }
-    }
-    // 初始化玩家
-    /**
-     * @param {player_data} playerData
-     */
-    initializePlayer(playerData) {
-        // 重置玩家游戏数据
-        playerData.health = 100;
-        playerData.maxhealth = 100;
-        playerData.armor = 0;
-        playerData.isAlive = true;
-        playerData.isReady = false;
-        
-        // 给予初始装备
-        this.giveStartingEquipment(playerData);
-        
-        // 发送游戏说明
-        this.sendGameInstructions(playerData.slot);
-    }
-    // 给予初始装备
-    /**
-     * @param {player_data} playerData
-     */
-    giveStartingEquipment(playerData) {
-        if (playerData.pawn) {
-            // 给予初始武器
-            playerData.pawn.GiveNamedItem("weapon_knife", true);
-            playerData.pawn.GiveNamedItem("weapon_glock", true);
-            
-            // 给予初始金钱
-            playerData.money = 800;
-        }
-    }
-    // 设置玩家准备状态
-    /**
-     * @param {number} playerSlot
-     * @param {boolean} isReady
-     */
-    setPlayerReady(playerSlot, isReady) {
-        const playerData = this.players.get(playerSlot);
-        if (!playerData || playerData.isReady === isReady) return false;
-        
-        playerData.isReady = isReady;
-        
-        // 更新准备计数
-        if (isReady) {
-            this.readyCount++;
-        } else {
-            this.readyCount--;
-        }
-        
-        // 广播准备状态
-        const playerName = playerData.controller?.GetPlayerName() || "玩家";
-        if (isReady) {
-            this.broadcastMessage(`${playerName} 已准备 (${this.readyCount}/${this.totalPlayers})`);
-        } else {
-            this.broadcastMessage(`${playerName} 取消准备 (${this.readyCount}/${this.totalPlayers})`);
-        }
-        
-        // 触发回调
-        if (this.onPlayerReady) {
-            this.onPlayerReady(playerData, isReady);
-        }
-        
-        return true;
-    }
-    
-    // 重置所有玩家准备状态
-    resetAllReadyStatus() {
-        let resetCount = 0;
-        
-        for (const [slot, playerData] of this.players) {
-            if (playerData.isReady) {
-                playerData.isReady = false;
-                resetCount++;
-            }
-        }
-        
-        this.readyCount = 0;
-        return resetCount;
-    }
-    // 给予玩家金钱
-    /**
-     * @param {number} playerSlot
-     * @param {number} amount
-     */
-    giveMoney(playerSlot, amount, reason = "") {
-        const playerData = this.players.get(playerSlot);
-        if (!playerData) return false;
-        
-        const oldMoney = playerData.money;
-        playerData.addMoney(amount);
-        
-        // 通知玩家
-        this.sendMessage(playerSlot, `获得 $${amount} ${reason}`);
-        
-        // 触发回调
-        if (this.onPlayerMoneyChange) {
-            this.onPlayerMoneyChange(playerData, oldMoney, playerData.money);
-        }
-        
-        return true;
-    }
-    
-    // 给予玩家经验
-    /**
-     * @param {number} playerSlot
-     * @param {number} amount
-     */
-    giveExp(playerSlot, amount, reason = "") {
-        const playerData = this.players.get(playerSlot);
-        if (!playerData) return false;
-        
-        const oldLevel = playerData.level;
-        playerData.addExp(amount);
-        
-        // 检查是否升级
-        if (playerData.level > oldLevel) {
-            this.sendMessage(playerSlot, `恭喜升级到 ${playerData.level} 级！`);
-            
-            // 触发升级回调
-            if (this.onPlayerLevelUp) {
-                this.onPlayerLevelUp(playerData, oldLevel, playerData.level);
-            }
-        }
-        
-        return true;
-    }
-    
-    // 治疗玩家
-    /**
-     * @param {number} playerSlot
-     * @param {number} amount
-     */
-    healPlayer(playerSlot, amount) {
-        const playerData = this.players.get(playerSlot);
-        if (!playerData) return false;
-        
-        return playerData.heal(amount);
-    }
-    
-    // 复活玩家
-    /**
-     * @param {number} playerSlot
-     */
-    respawnPlayer(playerSlot, health = 100, armor = 0) {
-        const playerData = this.players.get(playerSlot);
-        if (!playerData) return false;
-        
-        return playerData.respawn(health, armor);
-    }
-    /**
-     * @param {number} reward
-     */
-    giveWaveReward(reward)
-    {
-        for (const [slot, playerData] of this.players) {
-            this.giveMoney(slot,reward);
-            this.giveExp(slot,reward);
-        }
-    }
-    // 获取玩家数据
-    /**
-     * @param {number} playerSlot
-     */
-    getPlayer(playerSlot) {
-        return this.players.get(playerSlot);
-    }
-    
-    /**
-     * @param {CSPlayerController} controller
-     */
-    getPlayerByController(controller) {
-        if (!controller) return null;
-        return this.players.get(controller.GetPlayerSlot());
-    }
-    
-    /**
-     * @param {CSPlayerPawn} pawn
-     */
-    getPlayerByPawn(pawn) {
-        if (!pawn) return null;
-        
-        for (const [slot, playerData] of this.players) {
-            if (playerData.pawn === pawn) {
-                return playerData;
-            }
-        }
-        return null;
-    }
-    
-    // 获取所有玩家
-    getAllPlayers() {
-        return Array.from(this.players.values());
-    }
-    
-    // 获取活跃玩家（在游戏中且存活）
-    getActivePlayers() {
-        return Array.from(this.players.values()).filter(p => p.isInGame && p.isAlive);
-    }
-    
-    // 获取准备玩家
-    getReadyPlayers() {
-        return Array.from(this.players.values()).filter(p => p.isReady);
-    }
-    
-    // 获取存活玩家
-    getAlivePlayers() {
-        return Array.from(this.players.values()).filter(p => p.isAlive);
-    }
-    
-    // 检查是否所有玩家都准备好了
-    areAllPlayersReady() {
-        if (this.totalPlayers === 0) return false;
-        return this.readyCount === this.totalPlayers;
-    }
-    
-    // 检查是否还有存活玩家
-    hasAlivePlayers() {
-        return this.getAlivePlayers().length > 0;
-    }
-    
-    // 获取玩家数量统计
-    getPlayerStats() {
-        return {
-            total: this.totalPlayers,
-            ready: this.readyCount,
-            alive: this.getAlivePlayers().length,
-            active: this.getActivePlayers().length
-        };
-    }
-    
-    // 发送消息给玩家
-    /**
-     * @param {number} playerSlot
-     * @param {string} message
-     */
-    sendMessage(playerSlot, message) {
-        //Instance.ClientCommand(playerSlot, `say ${message}`);
-        Instance.Msg(message);
-    }
-    
-    // 发送欢迎消息
-    /**
-     * @param {number} playerSlot
-     */
-    sendWelcomeMessage(playerSlot) {
-        const messages = [
-            "欢迎来到PVE模式！",
-            "输入 !r 准备游戏",
-            "输入 !shop 打开商店",
-            "输入 !stats 查看状态"
-        ];
-        
-        messages.forEach((msg, index) => {
-                this.sendMessage(playerSlot, msg);
-        });
-    }
-    
-    // 发送游戏说明
-    /**
-     * @param {number} playerSlot
-     */
-    sendGameInstructions(playerSlot) {
-        const messages = [
-            "目标：消灭所有怪物波次",
-            "击杀怪物获得金钱和经验",
-            "在商店升级武器和属性",
-            "团队合作是关键！"
-        ];
-        
-        messages.forEach((msg, index) => {
-                this.sendMessage(playerSlot, msg);
-        });
-    }
-    
-    // 发送玩家金钱信息
-    /**
-     * @param {number} playerSlot
-     */
-    sendPlayerMoney(playerSlot) {
-        const playerData = this.players.get(playerSlot);
-        if (playerData) {
-            this.sendMessage(playerSlot, `金钱: $${playerData.money}`);
-        }
-    }
-    
-    // 发送玩家状态
-    /**
-     * @param {number} playerSlot
-     */
-    sendPlayerStats(playerSlot) {
-        const playerData = this.players.get(playerSlot);
-        if (playerData) {
-            const stats = playerData.getSummary();
-            const message = 
-                `ID: ${stats.id} | 等级: ${stats.level} | 金钱: $${stats.money}\n` +
-                `生命: ${stats.health}/${playerData.maxhealth} | 护甲: ${stats.armor}\n` +
-                `击杀: ${stats.kills} | 分数: ${stats.score}`;
-            
-            // 分多行发送
-            message.split('\n').forEach(line => {
-                this.sendMessage(playerSlot, line);
-            });
-        }
-    }
-    // 广播消息
-    /**
-     * @param {string} message
-     */
-    broadcastMessage(message) {
-        //Instance.ServerCommand(`say ${message}`);
-        Instance.Msg(message);
-    }
-    // 设置回调
-    /**
-     * @param {(playerData: player_data)=> void} callback
-     */
-    setOnPlayerJoin(callback) { this.onPlayerJoin = callback; }
-    /**
-     * @param {(playerData: player_data)=> void} callback
-     */
-    setOnPlayerLeave(callback) { this.onPlayerLeave = callback; }
-    /**
-     * @param {(playerData: player_data, isReady: boolean) => void} callback
-     */
-    setOnPlayerReady(callback) { this.onPlayerReady = callback; }
-    /**
-     * @param {(playerPawn: CSPlayerPawn) => void} callback
-     */
-    setOnPlayerDeath(callback) { this.onPlayerDeath = callback; }
-    /**
-     * @param {(playerData: player_data)=> void} callback
-     */
-    setOnPlayerRespawn(callback) { this.onPlayerRespawn = callback; }
-    /**
-     * @param {any} callback
-     */
-    setOnPlayerMoneyChange(callback) { this.onPlayerMoneyChange = callback; }
-    /**
-     * @param {any} callback
-     */
-    setOnPlayerLevelUp(callback) { this.onPlayerLevelUp = callback; }
-    
-    // 获取管理器状态
-    getStatus() {
-        return {
-            totalPlayers: this.totalPlayers,
-            readyCount: this.readyCount,
-            nextPlayerId: this.nextPlayerId
-        };
-    }
-    // 处理伤害前事件
-    /**
-     * @param {import("cs_script/point_script").BeforePlayerDamageEvent} event
-     */
-    handleBeforePlayerDamage(event) {
-        const playerData = this.getPlayerByPawn(event.player);
-        if (!playerData || !playerData.isAlive) {
-            return { abort: true }; // 阻止伤害
-        }
-        
-        // 这里可以添加伤害修改逻辑
-        // 例如：根据玩家等级或装备减少伤害
-        
-        return null; // 不修改伤害
-    }
-    
-    // 处理伤害事件
-    /**
-     * @param {import("cs_script/point_script").PlayerDamageEvent} event
-     */
-    handlePlayerDamage(event) {
-        const playerData = this.getPlayerByPawn(event.player);
-        if (playerData) {
-            // 记录伤害承受
-            // 注意：event.damage 是实际失去的生命值
-            // 调用player_data的takeDamage方法
-            const died = playerData.takeDamage(event.damage, event.attacker, event.inflictor);
-            
-            // 如果玩家死亡，触发死亡事件
-            if (died) {
-                this.handlePlayerDeath(event.player);
-            }
-        }
-    }
-    /**
-     * @param {number} nowtime
-     */
-    tick(nowtime)
-    {
-        //更新玩家的信息
-        //this.env_hudhint.UpdateHud();
-        //更新玩家正在攻击的怪物的血条
-        //this.healthhud.check(3);
-        //更新商店页面
-        //this.shophud.check(30);
-    }
-}
-
-class sleep
-{
-    /**
-     * @param {number} runtime
-     */
-    constructor(runtime)
-    {
-        this.onTime=null;
-        /**@type {number} */
-        this.runtime=runtime+Instance.GetGameTime();
-        /**@type {boolean} */
-        this.use=false;
-    }
-    /**
-     * @param {number} nowtime
-     */
-    tick(nowtime)
-    {
-        if(nowtime>=this.runtime&&this.onTime)
-        {
-            this.use=true;
-            this.onTime();
-        }
-    }
-    /**
-     * @param {any} callback
-     */
-    setonTime(callback)
-    {
-        this.onTime=callback;
-    }
-}
-class sleepList
-{
-    constructor()
-    {
-        /**@type {Map<number,sleep>} */
-        this.list = new Map();
-        /**@type {number} */
-        this.totalwork=0;
-    }
-    /**
-     * @param {number} nowtime
-     */
-    tick(nowtime)
-    {
-        for (const [id, work] of this.list) {
-            if (work.use) this.list.delete(id);
-            work.tick(nowtime);
-        }
-    }
-    /**
-     * @param {sleep} work
-     */
-    add(work)
-    {
-        this.list.set(this.totalwork++,work);
-    }
-}
-let m_sleepList=new sleepList();
-
-/**
- * @type {any[]}
- */
-const onTicks = [];
-/**
- * @type {any[]}
- */
-let delayActions = [];
-
-function tickCallback() {
-    for (const cb of onTicks) {
-        cb();
-    }
-
-    delayActions = delayActions.filter(act => {
-        if (act.targetTime > Instance.GetGameTime())
-            return true;
-
-        act.resolve();
-        return false;
-    });
-}
-
+//import { sleep,m_sleepList, tickCallback } from "./game_sleep";
 // 游戏状态管理
 class PvEGameManager {
     constructor() {
         /** @type {string} */
         this.gameState = 'WAITING'; // WAITING, PREPARE, PLAYING, WON, LOST
-        /** @type {PlayerManager} */
-        this.PlayerManager = new PlayerManager();
         /** @type {WaveManager} */
         this.WaveManager=new WaveManager();
         /** @type {MonsterManager} */
@@ -5301,28 +4266,33 @@ class PvEGameManager {
         // 波次完成事件
         this.WaveManager.setOnWaveComplete((waveNumber, waveConfig) => {
             // 给予玩家奖励
-            this.PlayerManager.giveWaveReward(waveConfig?.reward??0);
+            this.PlayerManager?.giveWaveReward(waveConfig?.reward??0);
             
             // 清理怪物管理器
+            this.MonsterManager.stopWave();
             this.MonsterManager.cleanup();
             this.MonsterManager.resetStats();
-
-            // 如果有下一波，准备开始
-            if (this.WaveManager.hasNextWave()) {
-                const work=new sleep(3);
-                work.setonTime(()=>{
-                    this.WaveManager.nextWave();
-                });
-                m_sleepList.add(work);
-            } else {
-                this.gameWon();
-            }
         });
         // 怪物生成事件
         this.MonsterManager.setOnMonsterSpawn((monster) => {
             console.log(`怪物 #${monster.id} 已生成`);
         });
-        
+        this.MonsterManager.setOnAttack((damage,target) => {
+            const controller=target.GetPlayerController();
+            if(controller)
+            {
+                const playerSlot = controller.GetPlayerSlot();
+                this.PlayerManager?.takeDamage(playerSlot, damage);
+            }
+        });
+        this.MonsterManager.setOnSkill((id,target) => {
+            const controller=target.GetPlayerController();
+            if(controller)
+            {
+                const playerSlot = controller.GetPlayerSlot();
+                this.PlayerManager?.addBuff(playerSlot, id);
+            }
+        });
         // 怪物死亡事件
         this.MonsterManager.setOnMonsterDeath((monster, killer, reward) => {
             // 给予玩家奖励
@@ -5332,8 +4302,8 @@ class PvEGameManager {
                 if(controller)
                 {
                     const playerSlot = controller.GetPlayerSlot();
-                    this.PlayerManager.giveExp(playerSlot, reward,"击杀怪物");
-                    this.PlayerManager.giveMoney(playerSlot, reward,"击杀怪物");
+                    this.PlayerManager?.giveExp(playerSlot, reward,"击杀怪物");
+                    this.PlayerManager?.giveMoney(playerSlot, reward,"击杀怪物");
                 }
             }
         });
@@ -5345,25 +4315,24 @@ class PvEGameManager {
         });
 
         // 玩家死亡事件
-        this.PlayerManager.setOnPlayerDeath((playerPawn) => {
+        this.PlayerManager?.setOnPlayerDeath((playerPawn) => {
             console.log(`玩家 ${playerPawn.GetPlayerController()?.GetPlayerName()} 死亡`);
             this.checkGameState();
         });
-        
         // 玩家准备事件
-        this.PlayerManager.setOnPlayerReady((playerData, isReady) => {
+        this.PlayerManager?.setOnPlayerReady((playerData, isReady) => {
             // 如果所有玩家都准备好了，开始游戏
             if (this.PlayerManager.areAllPlayersReady()) {
                 this.startGame();
             }
         });
-        this.PlayerManager.setOnPlayerRespawn((player_data)=>{
+        this.PlayerManager?.setOnPlayerRespawn((player_data)=>{
             if(this.gameState=="WAITING")
             {
                 this.enterPreparePhase();
             }
         });
-        this.PlayerManager.setOnPlayerJoin((player_data)=>{
+        this.PlayerManager?.setOnPlayerJoin((player_data)=>{
             if(this.gameState=="WAITING")
             {
                 this.enterPreparePhase();
@@ -5372,31 +4341,41 @@ class PvEGameManager {
     }
     
     init() {
-        this.PlayerManager.setupEventListeners();
+        this.PlayerManager?.setupEventListeners();
         // 监听玩家断开连接
         //Instance.OnPlayerDisconnect((event) => {
         //    this.checkGameState();
         //});
         Instance.SetThink(() => {
             //this.tick();
-            this.PlayerManager.tick(Instance.GetGameTime());
-            //this.WaveManager.tick();
-            m_sleepList.tick(Instance.GetGameTime());
+            this.PlayerManager?.tick(Instance.GetGameTime());
+            this.WaveManager.tick();
             this.MonsterManager.tick();
-            tickCallback();
             Instance.SetNextThink(Instance.GetGameTime()+1/64);
         });
         Instance.SetNextThink(Instance.GetGameTime()+1/64);
-
+        {
+            //强制结束当前波次
+            Instance.OnScriptInput("endWave",()=>{
+                this.WaveManager.completeWave();
+            });
+            //开启波次
+            Instance.OnScriptInput("startWave",(e)=>{
+                if(!e.caller)return;
+                const te=e.caller.GetEntityName();
+                const tes=te.split('_');
+                this.WaveManager.startWave(parseInt(tes[tes.length-1]));
+            });
+        }
     }
     
     // 进入准备阶段
     enterPreparePhase() {
         this.gameState = 'PREPARE';
-        this.PlayerManager.resetAllReadyStatus();
+        this.PlayerManager?.resetAllReadyStatus();
         this.broadcastMessage("=== 准备阶段开始 ===");
         this.broadcastMessage("输入 !r 或 !ready 准备");
-        this.broadcastMessage(`等待玩家准备... (0/${this.PlayerManager.getPlayerStats().active})`);
+        this.broadcastMessage(`等待玩家准备... (0/${this.PlayerManager?.getPlayerStats().active})`);
     }
     
     // 开始游戏
@@ -5411,14 +4390,14 @@ class PvEGameManager {
         this.WaveManager.startWave(1);
         
         // 重置玩家状态
-        this.PlayerManager.resetPlayerGameStatus();
+        this.PlayerManager?.resetPlayerGameStatus();
     }
     // 3. 游戏胜利/失败判断
     checkGameState() {
         if (this.gameState !== 'PLAYING') return;
         
         // 检查是否所有玩家死亡
-        if (this.PlayerManager.hasAlivePlayers() === false) {
+        if (this.PlayerManager?.hasAlivePlayers() === false) {
             this.gameLost();
             return;
         }
@@ -5444,8 +4423,8 @@ class PvEGameManager {
     // 回合重置
     resetGame() {
         // 重置玩家状态
-        this.PlayerManager.resetAllReadyStatus();
-        this.PlayerManager.resetPlayerGameStatus();
+        this.PlayerManager?.resetAllReadyStatus();
+        this.PlayerManager?.resetPlayerGameStatus();
 
         // 清除所有怪物
         this.WaveManager.resetGame();
@@ -5635,9 +4614,9 @@ Instance.OnScriptInput("restart",()=>{
 //        })
 //        for(let i=0;i<1;i++)pathfinder.findPath(start,end);
 //    }
-//    Instance.SetNextThink(Instance.GetGameTime()+1/1);
+//    Instance.SetNextThink(Instance.GetGameTime()+1/32);
 //});
-//Instance.SetNextThink(Instance.GetGameTime()+1/1);
+//Instance.SetNextThink(Instance.GetGameTime()+1/32);
 //let start={x:-90,y:-2923,z:607};
 //let end={x:-90,y:-2923,z:607};
 //let pd=false;

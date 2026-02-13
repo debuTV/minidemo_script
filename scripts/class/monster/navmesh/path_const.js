@@ -44,7 +44,7 @@ export const ASTAR_OPTIMIZATION_1 = false;                        //是否预计
 export const ASTAR_BLOCK_SIZE = 128;                              //多边形分块大小
 export const ASTAR_HEURISTIC_SCALE = 1.2;                         //A*推荐数值
 //Funnel参数
-export const FUNNEL_DISTANCE = 25;                                //拉直的路径距离边缘多远(0-100，百分比，100%意味着只能走边的中点)
+export const FUNNEL_DISTANCE = 12;                                //拉直的路径距离边缘多远(0-100，百分比，100%意味着只能走边的中点)
 //高度修正参数
 export const ADJUST_HEIGHT_DISTANCE = 50;                        //路径中每隔这个距离增加一个点，用于修正高度
 

@@ -4,6 +4,7 @@ import { Entity, Instance } from "cs_script/point_script";
 import { MovementController } from "./movement_controller";
 import { Monster } from "../monster";
 import { vec } from "../../util/vector";
+import { arriveDistance } from "../../game_const";
 export const PathState = {
     WALK: 1,//下一个点直走
     JUMP: 2,//下一个点需要跳跃
@@ -26,7 +27,6 @@ export class NPCLocomotion {
         
         //基础属性
         this.maxSpeed = 120;       // 怪物速度
-        this.arriveDistance = 15;   // 接近目标后认为“到达”,要比攻击距离远
 
         // 状态缓存
         this._isStopped = true;
@@ -64,8 +64,8 @@ export class NPCLocomotion {
      * @param {Entity[]} mpos
      */
     update(dt,mpos) {
-        this.maxSpeed=this.monster.speed;
-        this.arriveDistance=Math.max(1,this.monster.attackdist-5);
+        this.maxSpeed=this.monster.speed;//先实时更新速度
+        //this.arriveDistance=Math.max(1,this.monster.attackdist-5);
         if (this._isStopped) return;
         this.controller.update(dt, mpos);
     }
@@ -93,23 +93,23 @@ export class NPCLocomotion {
         {
             //暂定========================================
             // 已经非常接近 → 停止
-            if (dist <= 4) {
+            if (dist <= arriveDistance) {
                 this.wishDir=vec.get(0,0,0);
                 this.wishSpeed = this.maxSpeed;
                 return;
             }
+            
             this.wishDir=vec.normalize(toGoal);
-            this.wishSpeed = this.maxSpeed*3;
+            this.wishSpeed = 250;
         }
         else
         {
             // 已经非常接近 → 停止
-            if (dist <= this.arriveDistance) {
+            if (dist <= arriveDistance) {
                 this.wishDir=vec.get(0,0,0);
                 this.wishSpeed = this.maxSpeed;
                 return;
             }
-
             // 2d方向
             this.wishDir=vec.normalize2D(toGoal);
 

@@ -46,6 +46,9 @@ export class MonsterAnimator {
             case MonsterState.SKILL:
                 this.play("skill");
                 break;
+            case MonsterState.DEAD:
+                this.play("dead");
+                break;
         }
     }
     /**
@@ -80,6 +83,9 @@ export class MonsterAnimator {
                 break;
             case MonsterState.SKILL:
                 this.play("skill");
+                break;
+            case MonsterState.DEAD:
+                this.play("dead");
                 break;
         }
     }

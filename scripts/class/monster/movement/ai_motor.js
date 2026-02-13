@@ -1,8 +1,8 @@
 import { Entity, Instance } from "cs_script/point_script";
 import { AIMoveProbe } from "./ai_moveprobe";
 import { AIStuckMonitor } from "./ai_stuck";
-import { friction, gravity, stepHeight } from "../monster_const";
 import { vec } from "../../util/vector";
+import { friction, gravity, stepHeight } from "../../game_const";
 
 export class AIMotor {
     /**
@@ -129,7 +129,7 @@ export class AIMotor {
 
         const drop = speed * friction * dt;
         const newSpeed = Math.max(0, speed - drop);
-
+        
         this.velocity = vec.scale2D(this.velocity,newSpeed / speed);
     }
 

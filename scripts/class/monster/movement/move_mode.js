@@ -1,7 +1,7 @@
-import { Entity } from "cs_script/point_script";
+import { Entity, Instance } from "cs_script/point_script";
 import { NPCLocomotion } from "./npc_locomotion";
-import { gravity } from "../monster_const";
 import { vec } from "../../util/vector";
+import { gravity } from "../../game_const";
 
 export class MoveMode {
     /**
@@ -29,15 +29,12 @@ export class MoveWalk extends MoveMode {
      */
     update(loco, dt, mpos) {
         // 计算寻路输入
+        loco.pathFollower.advanceIfReached(loco.entity.GetAbsOrigin());
         const goal = loco.pathFollower.getMoveGoal();
-
         //这里可以切换跳跃
-
         loco._computeWish(goal);
-
         // 地面移动
-        const newpos=loco.motor.moveGround(loco.wishDir, loco.wishSpeed, dt, mpos);
-        loco.pathFollower.advanceIfReached(newpos);
+        loco.motor.moveGround(loco.wishDir, loco.wishSpeed, dt, mpos);
 
         // 自动切换到空中
         if (!loco.motor.isOnGround()) {
@@ -54,12 +51,11 @@ export class MoveAir extends MoveMode {
      */
     update(loco, dt, mpos) {
         // 计算寻路输入
+        loco.pathFollower.advanceIfReached(loco.entity.GetAbsOrigin());
         const goal = loco.pathFollower.getMoveGoal();
         loco._computeWish(goal);
-
         // 空中仍可有少量方向控制（可调）
-        const newpos=loco.motor.moveAir(loco.wishDir, 30,dt, mpos);
-        loco.pathFollower.advanceIfReached(newpos);
+        loco.motor.moveAir(loco.wishDir, 30,dt, mpos);
 
         // 落地 → 回到 Walk
         if (loco.motor.isOnGround()) {
